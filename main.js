@@ -20,7 +20,10 @@ const mcproxy = require("@rob9315/mcproxy");
 const antiafk = require("mineflayer-antiafk");
 const queueData = require("./queue.json");
 const util = require("./util");
+const Location = require("./location")
+const Player = require("./player");
 const save = "./saveid";
+const config_dir = process.env["NODE_CONFIG_DIR"] ?? 'config';
 var guild;
 var config;
 // This dummy var is a workaround to allow binaries
@@ -47,11 +50,17 @@ var accountType;
 let conn;
 let proxyClient;
 let client;
+var location = new Location()
+let inRange;
+let reconnectTimeout = config.reconnect.timeout
+let reconnectMult = config.reconnect.multiplier;
+let playersSeen = new Set();
 let server;
 let launcherPath;
 let c = 150;
 let finishedQueue = false
 let dc;
+let localConf = {};
 const rl = require("readline").createInterface({
 	input: process.stdin,
 	output: process.stdout
@@ -60,8 +69,6 @@ const promisedQuestion = (text) => {
 	return new Promise((resolve) => rl.question(text, resolve))
 }
 const askForSecrets = async () => {
-	let localConf = {};
-	const config_dir = process.env["NODE_CONFIG_DIR"] ?? 'config';
 	try {
 		localConf = util.readJSON(config_dir + '/local.json');
 	} catch (err) {
@@ -92,12 +99,9 @@ const askForSecrets = async () => {
 	localConf.discordBot = discordBotToken === "" ? false : config.has("discordBot") && config.get("discordBot");
 
 	if (canSave) {
-
 		savelogin = await promisedQuestion("Save login for later use? Y or N [N]: ");
 		if (savelogin.toLowerCase() === "y") {
-			fs.writeFile(config_dir + '/local.json', JSON.stringify(localConf, null, 2), (err) => {
-				if (err) console.log(err);
-			});
+			saveConfig();
 		};
 		console.clear();
 	}
@@ -268,6 +272,14 @@ function join() {
 	startAntiAntiAFK(); //for non-2b2t servers
 	activity("Starting the queue...");
 	client.once("login", (data, meta) => {
+		if (typeof (config.lastlaunch) != "undefined") {
+			if (config.lastlaunch.onlinemode == config.get("minecraftserver.onlinemode")) {
+				if (config.lastlaunch.username == client.username) {
+					return
+				}
+			}
+		}
+
 		if (!config.get("minecraftserver.onlinemode")) {
 			playerIcon = `https://mc-heads.net/avatar/Steve/64.png`
 		} else {
@@ -275,8 +287,37 @@ function join() {
 		}
 		guild.members.cache.get(dc.user.id).setNickname(client.username)
 		dc.user.setAvatar(playerIcon)
+
+		localConf.lastlaunch = {
+			"onlinemode": config.get("minecraftserver.onlinemode"),
+			"username": client.username
+		}
+
+		saveConfig();
 	})
 	client.on("packet", (data, meta) => { // each time 2b2t sends a packet
+
+		inRange = []
+		Object.keys(conn.bot.entities).forEach(key => {
+			if (conn.bot.entities[key].type == "player") {
+				if (conn.bot.entities[key].username != client.username) {
+					let player = new Player()
+					player.x = conn.bot.entities[key].position.x;
+					player.y = conn.bot.entities[key].position.y;
+					player.z = conn.bot.entities[key].position.z;
+					player.name = conn.bot.entities[key].username;
+					inRange.push(player)
+					if (!playersSeen.has(conn.bot.entities[key].username)) {
+						playersSeen.add(conn.bot.entities[key].username)
+					}
+				} else if (conn.bot.entities[key].username == client.username) {
+					location.x = conn.bot.entities[key].position.x;
+					location.y = conn.bot.entities[key].position.y;
+					location.z = conn.bot.entities[key].position.z;
+				}
+			}
+		});
+
 		switch (meta.name) {
 			case "playerlist_header":
 				if (!finishedQueue && true) { // if the packet contains the player list, we can use it to see our place in the queue
@@ -426,12 +467,22 @@ function reconnect() {
 	}
 }
 
+function saveConfig() {
+	fs.writeFile(config_dir + '/local.json', JSON.stringify(localConf, null, 2), (err) => {
+		if (err) console.log(err);
+	});
+}
+
 function reconnectLoop() {
 	mc.ping({
 		host: config.minecraftserver.hostname,
 		port: config.minecraftserver.port
 	}, (err) => {
-		if (err) setTimeout(reconnectLoop, 3000);
+		if (err) {
+			setTimeout(reconnectLoop, reconnectTimeout * reconnectMult);
+			reconnectMult += 1;
+			console.log(reconnectMult);
+		}
 		else startQueuing();
 	});
 }
@@ -618,6 +669,30 @@ function userInput(cmd, DiscordOrigin, discordMsg, channel) {
 	}
 }
 
+function formatPlayerList(playerList) {
+	if (playerList.size == 0 || !playerList) {
+		return "No players seen this session so far!"
+	} else {
+		let usernameString = "**Players:**\n"
+		playerList.forEach(player => {
+			usernameString = `${usernameString}\n${player}`
+		})
+		return usernameString
+	}
+}
+
+function getNamesFromPlayers(arr) {
+	if (arr.size == 0) {
+		return false
+	} else {
+		let usernameArr = []
+		arr.forEach(player => {
+			usernameArr.push(player.name)
+		})
+		return usernameArr
+	}
+}
+
 function stopMsg(discordOrigin, discordMsg, stoppedThing) {
 	msg(discordOrigin, discordMsg, stoppedThing, stoppedThing + " is **stopped**");
 	activity(stoppedThing + " is stopped.");
@@ -751,6 +826,16 @@ var sendMcMsg = function (mcMsg, data) {
 	conn.bot.chat(data)
 }
 PubSub.subscribe('sendMcMsg', sendMcMsg);
+
+var seenPlayers = function (seen, interaction) {
+	interaction.editReply(formatPlayerList(playersSeen))
+}
+PubSub.subscribe('seen', seenPlayers);
+
+var visualRange = function (visualRange, interaction) {
+	interaction.editReply(formatPlayerList(getNamesFromPlayers(inRange)))
+}
+PubSub.subscribe('visualRange', visualRange);
 
 var manageWhitelist = function (whitelist, interaction) {
 	let username = interaction.options.getString("username")

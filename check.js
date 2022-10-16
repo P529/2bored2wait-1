@@ -32,6 +32,8 @@ const DEFAULT_CONFIG = `{
     "MCversion": "1.12.2",
     "logging": true, // log errors and queue place
     "reconnect": {
+        "timeout": 5000, //Default time in ms to wait after losing connection or disconnecting
+        "multiplier": 1, //Multiplier to increase timeout after every failed reconnect attempt
         "onError": true, // reconnect on error or if 2b2t kicks you
         "notConnectedQueueEnd": false // restart the queue if you are not connect at the end of it
     },

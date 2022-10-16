@@ -1,12 +1,13 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { options } = require('request');
 const PubSub = require('pubsub-js');
 
 module.exports = {
     data: new SlashCommandBuilder()
-        .setName('stats')
-        .setDescription('Display proxy stats!'),
+        .setName('inrange')
+        .setDescription('List of players currently in visual range!'),
     async execute(interaction) {
         await interaction.deferReply({ ephemeral: true })
-        PubSub.publish('mcStats', interaction)
-    }
+        PubSub.publish('visualRange', interaction)
+    },
 };
