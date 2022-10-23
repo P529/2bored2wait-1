@@ -19,9 +19,9 @@ const everpolate = require("everpolate");
 const mcproxy = require("@rob9315/mcproxy");
 const antiafk = require("mineflayer-antiafk");
 const queueData = require("./queue.json");
-const util = require("./util");
-const Location = require("./location")
-const Player = require("./player");
+const util = require("./util/util");
+const Location = require("./util/location")
+const Player = require("./util/player");
 const save = "./saveid";
 const config_dir = process.env["NODE_CONFIG_DIR"] ?? 'config';
 var guild;
@@ -114,7 +114,7 @@ const askForSecrets = async () => {
 		});
 
 		dc.commands = new Collection();
-		const commandsPath = path.join(__dirname, 'commands');
+		const commandsPath = path.join(__dirname, 'util/commands');
 		const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
 		for (const file of commandFiles) {
@@ -495,11 +495,6 @@ function filterPacketAndSend(data, meta, dest) {
 	}
 }
 
-function round(number) {
-	if (number > 0) return Math.ceil(number);
-	else return Math.floor(number);
-}
-
 function activity(string) {
 	dc?.user?.setActivity(string);
 }
@@ -612,7 +607,9 @@ function userInput(cmd, DiscordOrigin, discordMsg, channel) {
 			switch (doing) {
 				case "queue":
 					msg(DiscordOrigin, discordMsg, "Reconnecting", `Position: ${webserver.queuePlace} \n Estimated time until login: ${webserver.ETA}`);
-					console.log("Position: " + webserver.queuePlace + "  Estimated time until login: " + webserver.ETA);
+					break;
+				case "connected":
+					msg(DiscordOrigin, discordMsg, "Connected", `Proxy is connected!`);
 					break;
 				case "timedStart":
 					msg(DiscordOrigin, discordMsg, "Timer", "Timer is set to " + starttimestring);
@@ -635,6 +632,10 @@ function userInput(cmd, DiscordOrigin, discordMsg, channel) {
 				case "queue":
 					stopQueing();
 					stopMsg(DiscordOrigin, discordMsg, "Queue");
+					break;
+				case "connected":
+					stopQueing();
+					stopMsg(DiscordOrigin, discordMsg, "Connected");
 					break;
 				case "timedStart":
 					clearTimeout(timedStart);
@@ -722,11 +723,7 @@ function sendDiscordMsg(channel, title, content) {
 			name: title,
 			value: content
 		}],
-		timestamp: new Date(),
-		footer: {
-			icon_url: dc.user.avatarURL,
-			text: "Author: MrGeorgen"
-		}
+		timestamp: new Date()
 	}
 	channel.send({
 		embeds: [MessageEmbed]
@@ -831,6 +828,25 @@ var seenPlayers = function (seen, interaction) {
 	interaction.editReply(formatPlayerList(playersSeen))
 }
 PubSub.subscribe('seen', seenPlayers);
+
+var startProxy = function (start, interaction) {
+	startQueuing()
+	interaction.editReply("Queue is starting up!")
+}
+PubSub.subscribe('start', startProxy);
+
+var stopProxy = function (start, interaction) {
+	stopQueing()
+	interaction.editReply("Stoping the proxy!")
+}
+PubSub.subscribe('stop', stopProxy);
+
+var exitProxy = function (start, interaction) {
+	interaction.editReply("Exiting the proxy!").then(() => {
+		return process.exit(0)
+	})
+}
+PubSub.subscribe('exit', exitProxy);
 
 var visualRange = function (visualRange, interaction) {
 	interaction.editReply(formatPlayerList(getNamesFromPlayers(inRange)))

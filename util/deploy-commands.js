@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { REST, Routes } = require('discord.js');
-const { clientId, guildId, BotToken } = require('./config/local.json');
+const { clientId, guildId, BotToken } = require('../config/local.json');
 
 const commands = [];
 const commandsPath = path.join(__dirname, 'commands');
